@@ -115,10 +115,22 @@ def main() -> int:
     parser.add_argument("--subject-hint", default="", help="Used only when key color is omitted")
     parser.add_argument("--tolerance", type=int, default=18, help="RGB distance tolerance, 0-255")
     parser.add_argument("--feather", type=int, default=0, help="Optional alpha blur radius")
+    parser.add_argument(
+        "--allow-crop-input",
+        action="store_true",
+        help="Override the pipeline guard. Use only when the user explicitly asked for local crop cleanup.",
+    )
     args = parser.parse_args()
 
     source = Path(args.input).expanduser().resolve()
     output = Path(args.output).expanduser().resolve()
+    if "crops" in source.parts and not args.allow_crop_input:
+        raise SystemExit(
+            "Refusing to process a crops/ image as a final asset. "
+            "Run image-2 regeneration first and use an ai_raw/ input, "
+            "or pass --allow-crop-input only for an explicit local-only cleanup task."
+        )
+
     key_color = parse_color(args.key_color) if args.key_color else pick_key_color(args.subject_hint)
 
     image = Image.open(source)

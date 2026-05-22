@@ -1,6 +1,6 @@
 ---
 name: image-crop-to-png-pipeline
-description: 从参考图中切出独立元素到本地，再把每个 crop 交给 image-2/图片生成重绘，最后输出只有主体的透明 PNG。适用于 UI 还原、贴纸拆解、素材提取、插画资产整理；不能只做本地抠图就结束。
+description: 从参考图中切出独立元素到本地，再把每个 crop 作为图像参考交给 image-2/图片生成重绘，最后只从 AI 重绘图输出透明 PNG。适用于 UI 还原、贴纸拆解、素材提取、插画资产整理；严禁把本地 crop 抠透明后当最终图交付。
 ---
 
 # Image Crop to PNG Pipeline
@@ -25,6 +25,15 @@ description: 从参考图中切出独立元素到本地，再把每个 crop 交�
 4. 生成清单与预览
 
 本地 crop、传统抠图、背景透明化都只是中间步骤；除非用户明确要求“只切图/只抠图”，最终交付必须来自 AI 重绘后的图像。
+
+## 不可绕过的硬规则
+
+- 最终 `generated/*.png` 的直接来源只能是 `ai_raw/` 中的 AI 重绘图，不能是 `crops/`、原图、截图或本地透明化结果。
+- 禁止执行或描述 `crops/ -> generated/` 的直通流程。若发现自己正准备这样做，必须停止并改回 `crops/ -> ai_raw/ -> generated/`。
+- `scripts/remove_bg_adaptive.py` 只能用于 `ai_raw/` 里的键色背景图。不要对 `crops/` 运行它来制造最终交付物。
+- AI 重绘步骤必须真的把 crop 图像作为参考输入。仅写文本提示词、根据文件名想象、或用本地脚本“模拟 AI 生成”都不合格。
+- 如果当前可用的图片生成工具 schema 只有文本 prompt、没有图片/附件/reference image 输入能力，必须停下说明“无法执行 image-2 参考图重绘”，不要继续做本地抠图替代。
+- 交付前必须能说明每个最终 PNG 的链路：`crop_id -> crop file -> ai_raw file -> generated file`。缺少 `ai_raw` 证据时，任务未完成。
 
 ## 关键教训
 
@@ -51,12 +60,14 @@ description: 从参考图中切出独立元素到本地，再把每个 crop 交�
 
 3. AI 重绘
    - 使用 image-2/内置图片生成能力，而不是本地脚本假装生成
+   - 在调用前检查工具是否支持图像参考输入；如果不支持，停止并报告，不能进入最终 PNG 生成
    - 必须把 crop 图像本身作为参考输入；如果做不到，停止并报告缺口
    - 默认逐个 crop 生成；数量很多时可先做 contact sheet 小批量验证，但必须能拆回独立素材并保持顺序
    - 提示词必须要求：参考输入 crop、保持原风格和原配色、只生成主体、主体完整居中、无文字水印、纯色键色背景
    - AI 生成原图先保存到 `assets/<task>/ai_raw/`
 
 4. 抠图与透明 PNG
+   - 输入必须来自 `assets/<task>/ai_raw/`；若只有 `crops/`，说明 AI 重绘尚未完成
    - 自适应键色策略：
      - 主体含绿色 -> 用洋红 `#FF00FF`
      - 主体含洋红/粉紫 -> 用绿色 `#00FF00`
@@ -68,11 +79,13 @@ description: 从参考图中切出独立元素到本地，再把每个 crop 交�
 5. 产物归档
    - 生成 `generated_manifest.json`
    - 生成 `preview/generated_contact_sheet.png`
+   - `generated_manifest.json` 中每个 item 必须包含 `crop_file`、`ai_raw_file`、`generated_file`、`generation_tool`、`reference_image_used: true`
 
 ## 质量门禁
 
 每个输出 PNG 必须满足：
 
+- `generated_manifest.json` 证明其来自 AI 重绘图，而不是原始 crop
 - 有透明通道（alpha）
 - 边缘无明显锯齿与彩边
 - 主体无误扣（尤其绿色叶子/植物）
@@ -114,9 +127,10 @@ assets/<task>/
   - 若不存在，由 Codex 使用图片生成工具逐张或小批量执行
 
 - `scripts/remove_bg_adaptive.py`
-  - 输入：AI 原图、可选 key color/subject hint
+  - 输入：`ai_raw/` 中的 AI 原图、可选 key color/subject hint
   - 输出：透明 PNG 到 `generated/`
   - 必须使用边缘连通背景去除，不能全图替换键色
+  - 禁止将 `crops/` 作为输入来生成最终资产
 
 - `scripts/build_contact_sheet.py`
   - 输入：`crops/` 或 `generated/`
@@ -137,4 +151,5 @@ Use the provided crop as the exact visual reference. Regenerate a clean standalo
 - 先小样验证，再批量执行。
 - 抠图失败时优先换键色，其次调阈值和收边参数。
 - 不直接把原始截图 crop 当最终资产。
+- 没有 `ai_raw/` 就没有最终交付。
 - 交付前展示 `generated_contact_sheet.png`，并说明最终 PNG 来自 AI 重绘后的透明化结果。
