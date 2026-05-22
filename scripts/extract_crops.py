@@ -207,7 +207,7 @@ def main() -> int:
                 "area": component["area"],
                 "touches_edge": component["touches_edge"],
                 "ai_status": "pending",
-                "note": "Reference crop only; regenerate with image-2 before final PNG delivery.",
+                "note": "Reference crop only; hand the real image content to an available built-in image generation/editing tool before final PNG delivery.",
             }
         )
 

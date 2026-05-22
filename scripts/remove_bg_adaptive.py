@@ -127,7 +127,7 @@ def main() -> int:
     if "crops" in source.parts and not args.allow_crop_input:
         raise SystemExit(
             "Refusing to process a crops/ image as a final asset. "
-            "Run image-2 regeneration first and use an ai_raw/ input, "
+            "Run AI reference-image regeneration first and use an ai_raw/ input, "
             "or pass --allow-crop-input only for an explicit local-only cleanup task."
         )
 
