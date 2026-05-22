@@ -1,0 +1,140 @@
+---
+name: image-crop-to-png-pipeline
+description: 从参考图中切出独立元素到本地，再把每个 crop 交给 image-2/图片生成重绘，最后输出只有主体的透明 PNG。适用于 UI 还原、贴纸拆解、素材提取、插画资产整理；不能只做本地抠图就结束。
+---
+
+# Image Crop to PNG Pipeline
+
+## 何时触发
+
+当用户提出以下意图时触发：
+
+- “从图片里把元素切出来”
+- “批量抠图成 PNG”
+- “切图 -> AI 生图 -> 透明 PNG”
+- “把贴纸/图标/插画拆成独立素材”
+- “把切好的素材再用 image-2 生成一遍”
+
+## 核心目标
+
+对一张或多张参考图执行标准流水线：
+
+1. 切图到本地（按独立元素）
+2. 把每个 crop 作为参考图交给 image-2/图片生成重绘
+3. 对 AI 生成图做键色抠图（输出透明 PNG）
+4. 生成清单与预览
+
+本地 crop、传统抠图、背景透明化都只是中间步骤；除非用户明确要求“只切图/只抠图”，最终交付必须来自 AI 重绘后的图像。
+
+## 关键教训
+
+- 先确认源图文件名。若目录里有相似图片，不要猜；优先使用用户明确给出的路径。
+- 不要把原始 crop 透明化后当成最终资产。这个 skill 的核心价值是“crop 作为参考图 -> image-2 重绘 -> 透明 PNG”。
+- 如果本地脚本缺少 AI 生成实现，直接说明由 Codex 的图片生成能力执行该步骤，不要声称脚本能批量完成。
+- 如果当前图片生成工具不能接收本地 crop/附件作为参考图，必须停下说明限制；不能用纯文本描述生成来冒充“参考图重绘”。
+- 对大量元素先做 1 个小样。小样必须通过“风格、主体完整、颜色、透明边缘”检查后再继续批量。
+- 若用户纠正流程，立即停止当前错误路径，重新对齐流程和产物目录。
+
+## 强制流程
+
+1. 输入分析
+   - 识别来源图片路径
+   - 若有多个候选图片，列出差异并使用用户指定文件
+   - 判断是“自动分割”还是“半自动人工框选”
+
+2. 本地切图
+   - 输出到 `assets/<task>/crops/`
+   - 记录 `crops_manifest.json`
+   - 生成切图预览 `preview/crops_contact_sheet.*`
+   - 这一步只产出 AI 参考素材，不能作为最终交付
+   - 截图边缘露出的残缺元素不要默认进入 AI 队列；剔除或先让用户确认
+
+3. AI 重绘
+   - 使用 image-2/内置图片生成能力，而不是本地脚本假装生成
+   - 必须把 crop 图像本身作为参考输入；如果做不到，停止并报告缺口
+   - 默认逐个 crop 生成；数量很多时可先做 contact sheet 小批量验证，但必须能拆回独立素材并保持顺序
+   - 提示词必须要求：参考输入 crop、保持原风格和原配色、只生成主体、主体完整居中、无文字水印、纯色键色背景
+   - AI 生成原图先保存到 `assets/<task>/ai_raw/`
+
+4. 抠图与透明 PNG
+   - 自适应键色策略：
+     - 主体含绿色 -> 用洋红 `#FF00FF`
+     - 主体含洋红/粉紫 -> 用绿色 `#00FF00`
+     - 不确定 -> 优先 `#FF00FF`
+   - 只能移除“从画布边缘连通的键色背景”，不要全图按颜色替换，避免误伤腮红、花朵、衣服等主体颜色
+   - 输出到 `assets/<task>/generated/*.png`
+   - 必须验证 alpha 通道有效
+
+5. 产物归档
+   - 生成 `generated_manifest.json`
+   - 生成 `preview/generated_contact_sheet.png`
+
+## 质量门禁
+
+每个输出 PNG 必须满足：
+
+- 有透明通道（alpha）
+- 边缘无明显锯齿与彩边
+- 主体无误扣（尤其绿色叶子/植物）
+- 无额外背景块、无脏像素、无水印
+- 文件名和 manifest 顺序可追溯到原始 crop
+
+小样不合格时先修策略，不要继续批量：
+
+- 颜色偏离：加强“严格保留原配色”，或改为更小批次/逐张生成。
+- 背景去除伤主体：换键色，或改用边缘连通键色算法。
+- 多个主体粘连：回到切图步骤，手动拆分 crop。
+- 边缘残缺元素被切出：重新切图并跳过 touches_edge 组件，或让用户确认是否需要保留。
+- AI 漏主体/改姿态：重跑该 crop，并在提示词中描述关键形状和动作。
+
+## 推荐目录规范
+
+```text
+assets/<task>/
+  crops/
+  ai_raw/
+  generated/
+  manifests/
+    crops_manifest.json
+    generated_manifest.json
+  preview/
+    crops_contact_sheet.jpg
+    generated_contact_sheet.png
+```
+
+## 脚本约定
+
+- `scripts/extract_crops.py`
+  - 输入：source image、可选框选参数
+  - 输出：`crops/` + `crops_manifest.json`
+
+- `scripts/generate_assets.py`
+  - 当前仓库可能没有该脚本；不要依赖它完成 AI 生成
+  - 若存在，仍需确认它真的调用 image-2 并保存 `ai_raw/`
+  - 若不存在，由 Codex 使用图片生成工具逐张或小批量执行
+
+- `scripts/remove_bg_adaptive.py`
+  - 输入：AI 原图、可选 key color/subject hint
+  - 输出：透明 PNG 到 `generated/`
+  - 必须使用边缘连通背景去除，不能全图替换键色
+
+- `scripts/build_contact_sheet.py`
+  - 输入：`crops/` 或 `generated/`
+  - 输出：预览图
+
+## image-2 提示词模板
+
+对每个 crop 使用类似提示词，并按具体主体补充：
+
+```text
+Use the provided crop as the exact visual reference. Regenerate a clean standalone sticker/icon of only the main subject. Preserve the original character design, pose, proportions, line weight, colors, and cute rounded style. Center the subject with a small safe margin. Do not add text, watermark, shadows, border frames, or extra objects. Put the subject on a flat solid KEY_COLOR background only.
+```
+
+其中 `KEY_COLOR` 根据主体颜色替换为 `#FF00FF` 或 `#00FF00`。
+
+## 执行原则
+
+- 先小样验证，再批量执行。
+- 抠图失败时优先换键色，其次调阈值和收边参数。
+- 不直接把原始截图 crop 当最终资产。
+- 交付前展示 `generated_contact_sheet.png`，并说明最终 PNG 来自 AI 重绘后的透明化结果。
