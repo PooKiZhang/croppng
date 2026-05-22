@@ -35,6 +35,19 @@ description: 从参考图中切出独立元素到本地，再把每个 crop 作�
 - 如果当前可用的图片生成工具 schema 只有文本 prompt、没有图片/附件/reference image 输入能力，必须停下说明“无法执行 image-2 参考图重绘”，不要继续做本地抠图替代。
 - 交付前必须能说明每个最终 PNG 的链路：`crop_id -> crop file -> ai_raw file -> generated file`。缺少 `ai_raw` 证据时，任务未完成。
 
+## 高风险误执行场景
+
+最容易犯的错误是：看到本地已有裁剪和抠图脚本，就把源图切成 `crops/*.png`，再直接把这些 crop 改成透明底，保存到 `generated/*.png`，最后告诉用户“PNG 已生成”。这条路径看起来完成了切图和透明化，但它完全跳过了 image-2 参考图重绘，因此不是本 skill 的合格输出。
+
+遇到“把图片切出来做成透明 PNG”“批量抠图”“生成独立素材”这类请求时，先问自己：
+
+- 我有没有把每个 crop 图像本身传给 image-2/图片生成工具作为参考？
+- 我有没有得到新的 AI 重绘图，并保存到 `ai_raw/`？
+- `generated/` 里的透明 PNG 是否只来自 `ai_raw/`，而不是来自 `crops/`？
+- `generated_manifest.json` 是否能证明 `reference_image_used: true`？
+
+如果任何答案是否定的，不能交付最终 PNG。此时应停在当前阶段并说明：已完成本地 crop，但尚未完成 image-2 参考图重绘。
+
 ## 关键教训
 
 - 先确认源图文件名。若目录里有相似图片，不要猜；优先使用用户明确给出的路径。
