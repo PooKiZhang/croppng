@@ -1,8 +1,8 @@
-# image-crop-to-png
+# image-png-v1
 
 A Codex skill for extracting elements from reference images and producing clean transparent PNG assets with an AI-assisted pipeline:
 
-`crop -> hand the real crop image to built-in AI regeneration -> adaptive background removal -> PNG`
+`source image -> analyze elements -> local crops -> AI redraw from crop references -> chroma-key removal -> transparent PNG`
 
 The final PNGs must come from AI-regenerated assets, not from merely making the original crops transparent.
 
@@ -12,7 +12,7 @@ The final PNGs must come from AI-regenerated assets, not from merely making the 
 - Hands the real crop image content to Codex built-in image generation/editing to regenerate each crop as a clean keyed-background asset
 - Removes keyed backgrounds with adaptive key-color logic
 - Produces transparent PNG assets
-- Writes manifests and contact-sheet previews
+- Writes manifests; contact-sheet previews are optional QA helpers
 
 ## Repository structure
 
@@ -20,7 +20,8 @@ The final PNGs must come from AI-regenerated assets, not from merely making the 
 .
 ├── SKILL.md
 ├── README.md
-├── references/
+├── agents/
+│   └── openai.yaml
 └── scripts/
     ├── extract_crops.py
     ├── remove_bg_adaptive.py
@@ -32,14 +33,14 @@ The final PNGs must come from AI-regenerated assets, not from merely making the 
 ### Option A: clone directly into Codex skills directory
 
 ```bash
-git clone https://github.com/PooKiZhang/croppng.git ~/.codex/skills/image-crop-to-png-pipeline
+git clone https://github.com/PooKiZhang/croppng.git ~/.codex/skills/image-png-v1
 ```
 
 ### Option B: clone anywhere, then copy
 
 ```bash
 git clone https://github.com/PooKiZhang/croppng.git
-cp -R croppng ~/.codex/skills/image-crop-to-png-pipeline
+cp -R croppng ~/.codex/skills/image-png-v1
 ```
 
 After install, restart Codex (or refresh skills) to load the new skill.
@@ -49,8 +50,8 @@ After install, restart Codex (or refresh skills) to load the new skill.
 - Treat `crops/` as AI reference inputs only.
 - Run one sample through the available built-in image generation/editing capability first, inspect the result, then continue in batches.
 - The AI regeneration step must pass the real crop image content, not just a file path, filename, bounding box, or text description.
-- If the available image-generation tool cannot take or reference the local crop image itself, enter handoff mode: produce the crops folder, manifest, contact sheet, and a reference zip; clearly say these are not final PNGs and ask the user to reattach the crop/contact sheet/zip as image input.
-- When the user reattaches a crop/contact sheet/zip image, resume from AI regeneration instead of cutting the source image again.
+- If the available image-generation tool cannot take or reference the local crop image itself, enter handoff mode: produce the crops folder, manifest, and a reference zip; clearly say these are not final PNGs and ask the user to reattach the crop/zip as image input.
+- When the user reattaches a crop or reference zip, resume from AI regeneration instead of cutting the source image again.
 - Do not check or ask for `OPENAI_API_KEY`, external image-generation API keys, SDKs, or command-line generation setup. This skill defaults to Codex's current conversation/UI image capabilities.
 - Use **magenta key background** (`#FF00FF`) when subjects contain green details (leaf/plant) to avoid accidental foreground removal.
 - Use **green key background** (`#00FF00`) when subjects contain magenta/pink-heavy regions.
@@ -67,7 +68,7 @@ assets/<task>/
   manifests/
     crops_manifest.json
     generated_manifest.json
-  preview/
+  preview/  # optional
     crops_contact_sheet.jpg
     generated_contact_sheet.png
 ```
