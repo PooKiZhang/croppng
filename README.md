@@ -51,6 +51,7 @@ After install, restart Codex (or refresh skills) to load the new skill.
 - The AI regeneration step must pass the real crop image content, not just a file path, filename, bounding box, or text description.
 - If the available image-generation tool cannot take or reference the local crop image itself, enter handoff mode: produce the crops folder, manifest, contact sheet, and a reference zip; clearly say these are not final PNGs and ask the user to reattach the crop/contact sheet/zip as image input.
 - When the user reattaches a crop/contact sheet/zip image, resume from AI regeneration instead of cutting the source image again.
+- Do not check or ask for `OPENAI_API_KEY`, external image-generation API keys, SDKs, or command-line generation setup. This skill defaults to Codex's current conversation/UI image capabilities.
 - Use **magenta key background** (`#FF00FF`) when subjects contain green details (leaf/plant) to avoid accidental foreground removal.
 - Use **green key background** (`#00FF00`) when subjects contain magenta/pink-heavy regions.
 - Remove only edge-connected key-color pixels, not every matching color in the whole image.
