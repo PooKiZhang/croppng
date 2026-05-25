@@ -1,4 +1,7 @@
 interface:
-  display_name: "Image PNG V1"
-  short_description: "把参考图中的图标、插画、贴纸、吉祥物等素材切图并通过 AI 重绘成干净透明 PNG。"
-  default_prompt: "请使用 image-png-v1 工作流，把我提供的图片素材拆解、切图、AI 重绘并输出透明 PNG。"
+  display_name: "Reference PNG Redraw"
+  short_description: "参考图 AI 重绘并输出透明 PNG"
+  brand_color: "#FF5CA8"
+  default_prompt: "Use $reference-png-redraw to turn this local crop into a clean transparent PNG asset."
+policy:
+  allow_implicit_invocation: true

@@ -1,53 +1,36 @@
 ---
-name: image-png-v1
-description: 从用户上传或指定的图片中分析可独立提取的视觉元素，先裁切到本地作为参考素材，再用 Codex 可用的内置图片生成/编辑能力基于 crop 重绘成更干净、主体明确的图，随后使用纯色键色背景抠除并输出透明 PNG。用于贴纸拆解、图标/插画/吉祥物/装饰素材提取、图片素材整理、批量生成可复用 PNG；不要用于把 UI 设计稿还原到 Figma 或直接重建布局。
+name: reference-png-redraw
+description: >-
+  Use when the user wants to turn one or more local reference images or crops into clean reusable transparent PNG assets through the strict workflow of local reference image or crop, then AI redraw on a flat chroma-key background, then local transparent background removal, then saved final PNG. Trigger for phrases like "本地参考图 重绘 PNG 透明抠图落盘", "按这个流程处理图片", "把 crop 生成 PNG", "贴纸/图标/插画/吉祥物抠成透明 PNG", or "AI 重绘后落盘". Do not use for Figma layout reconstruction by itself.
 ---
 
-# Image PNG V1
+# Reference PNG Redraw
 
-## Goal
+## Contract
 
-Turn a source image into reusable transparent PNG assets:
+This skill converts local reference images into final transparent PNG assets:
 
-`source image -> analyze elements -> local crops -> AI redraw from each crop -> chroma-key removal -> transparent PNG`
+`local reference/crop -> AI redraw -> ai_raw -> chroma-key removal -> generated PNG`
 
-The final PNGs must come from the AI-redrawn images, not from direct background removal on the original crops.
+The final deliverable must come from the AI-redrawn image, not from direct background removal on the original reference. Original references are inputs only.
 
-## Core Rules
+## Use This For
 
-- Treat this as an asset extraction workflow, not a Figma/UI reconstruction workflow.
-- Analyze which visible elements are worth extracting before cropping: stickers, mascots, icons, illustrations, objects, decorative marks, logos, badges, and standalone text-art.
-- Rebuild nothing as vector shapes unless the user explicitly asks for SVG/vector output. The default output is transparent PNG.
-- Save original crops locally first. Crops are reference inputs only, never final deliverables.
-- Use each crop's actual image content as the visual reference for AI redraw. Do not rely only on filename, bbox, or text description.
-- Save AI raw outputs before background removal.
-- Only run background removal on AI raw outputs, not on crops.
-- If AI redraw cannot use the crop as an image reference in the current environment, stop at crops/reference package and clearly say final PNG generation is not complete.
+- Single crop to clean transparent PNG.
+- Batch sticker, mascot, illustration, badge, decoration, or complex icon extraction.
+- UI asset preparation when the target is a reusable PNG, not a Figma layout.
+- Figma reconstruction asset prep for banner images, mascots, photos, complex illustrations, complex backgrounds, and icons that cannot be sourced from an open SVG library.
 
-## What "AI Redraw" Means
+## Do Not
 
-"AI redraw" means Codex itself uses the current conversation's available image generation/editing ability to generate a new image from the crop reference. It does not mean:
+- Do not hand-draw the asset as vector shapes unless the user explicitly asks for SVG/vector.
+- Do not remove the background from the original crop and call it final.
+- Do not claim completion if only crops/references exist.
+- Do not skip visual inspection of the local reference before prompting image generation.
 
-- Asking the user for an external API key.
-- Writing a local script that pretends to generate an image.
-- Only describing the crop in text without providing the crop image as visual reference.
-- Directly removing the background from the original crop and calling it final.
+## Folder Layout
 
-The expected behavior is:
-
-1. Open or display the crop so Codex can visually see it.
-2. Ask Codex's image generation/editing capability to regenerate the subject from that crop.
-3. Require a flat solid key-color background.
-4. Save the generated result into `ai_raw/`.
-5. Run the local chroma-key removal script to create the final transparent PNG.
-
-If the current Codex runtime exposes a built-in image generation tool, use it. If the runtime lets Codex generate images from visible conversation images, use that. Do not block on external APIs or `OPENAI_API_KEY`.
-
-Only enter handoff mode if the current runtime truly provides no way for Codex to generate/edit an image from the visible crop reference. In that case, do not fake the output; keep the crops and manifest as the handoff package.
-
-## Output Directory
-
-Create a task folder under the current workspace unless the user specifies another destination:
+Create a task folder under the current workspace unless the user gives a destination:
 
 ```text
 assets/<task-name>/
@@ -56,153 +39,73 @@ assets/<task-name>/
   ai_raw/
   generated/
   manifests/
-    crops_manifest.json
-    generated_manifest.json
   preview/
 ```
 
-Use stable, descriptive filenames such as `01_dragon_frame.png`, `02_cool_logo.png`, or `03_flower_badge.png`.
+Use stable names such as `01_dragon_drink_reference.png`, `01_dragon_drink_raw.png`, and `01_dragon_drink.png`.
 
-## Step 1: Source Intake
+## Workflow
 
-1. Locate the exact source image.
-2. If the image is uploaded in the chat but not available as a local file, use the visible image context when possible. If local cropping requires a file path and no file is available, ask the user to save/provide the local file path.
-3. Copy or record the source under `assets/<task-name>/source/`.
-4. Inspect the image dimensions and visual content before deciding crop strategy.
+1. Locate the local reference image. If the image is only visible in chat and no path exists, ask for a path before local cropping/landing.
+2. Initialize the task folder with `scripts/reference_png_redraw.py init`.
+3. View each reference with the local image viewer so the AI redraw step can actually use the crop as visual reference.
+4. Choose a chroma key that is not in the subject:
+   - Use `#FF00FF` when the subject contains greens, leaves, grass, plants, or teal.
+   - Use `#00FF00` when the subject contains pink, magenta, purple, blush-heavy areas, or red-purple gradients and has no important green.
+   - Use `#FFFF00` or `#00FFFF` only when both common key colors conflict; avoid cyan for blue-heavy subjects.
+5. Generate the AI redraw using the visible reference image. Require a perfectly flat solid chroma-key background.
+6. Save the raw AI output to `ai_raw/`.
+7. Run `scripts/reference_png_redraw.py finalize` to remove the chroma key into `generated/` and update the manifest.
+8. Validate alpha, transparent corners, complete subject, centered padding, and no key-color fringe.
 
-## Step 2: Element Analysis
-
-List or internally plan the extractable elements:
-
-- Keep complete, visually separate subjects.
-- Include important text-art with its associated graphic when they form one sticker/logo.
-- Skip partial elements cut off by the image edge unless the user asks to keep them.
-- Split separate stickers/objects into separate crops when they do not visually belong together.
-- Keep compound stickers together when separating would break their meaning.
-- Use manual or semi-manual boxes when automatic segmentation merges nearby stickers.
-
-Record each crop in `crops_manifest.json` with:
-
-```json
-{
-  "id": "01_dragon_frame",
-  "bbox": [x, y, width, height],
-  "crop_file": "assets/<task>/crops/01_dragon_frame.png",
-  "notes": "framed dragon portrait sticker"
-}
-```
-
-## Step 3: Local Cropping
-
-Crop each planned element into `crops/` with enough padding to preserve the full subject and outline.
-
-After cropping:
-
-- Inspect a crop contact sheet or a few key crops.
-- Fix tight crops, merged elements, or accidental partial elements before AI redraw.
-- Do not present crops as final PNG assets.
-
-## Step 4: AI Redraw
-
-For each crop, load or view the crop so the image generation/editing step can actually see it as a reference.
-
-Prompt pattern:
+## Prompt Pattern
 
 ```text
-Use the provided crop as the exact visual reference.
+Use the provided reference crop as the exact visual reference.
 Regenerate a clean standalone PNG-style asset of only the main subject.
-Preserve the original subject identity, pose, proportions, colors, line weight, and cute sticker/illustration style.
+Preserve the subject identity, pose, proportions, colors, line weight, and illustration/sticker style.
 Make the subject complete, centered, and separated from the background with a small safe margin.
-Remove unrelated neighboring elements, dirty crop edges, screenshots, frames, and background clutter unless they are part of the subject.
-Place the subject on a perfectly flat solid KEY_COLOR background only.
-No shadow, no texture, no gradient, no watermark, no extra objects.
+Remove dirty crop edges, screenshots, original background, neighboring fragments, and unrelated objects.
+Place the regenerated asset on a perfectly flat solid KEY_COLOR chroma-key background only.
+The background must be one uniform color with no shadows, gradients, texture, reflections, floor plane, or lighting variation.
 Do not use KEY_COLOR anywhere in the subject.
+No watermark and no extra text unless the reference text is part of the subject.
 ```
 
-Save each generated source image to `ai_raw/`. The `ai_raw/` file is the proof that the final PNG came from AI redraw.
+## Built-In Image Generation
 
-## Step 5: Key Color Choice
+Prefer the current Codex built-in image generation/editing tool when available. For local files, view the reference crop first so the image is visible in conversation context, then generate from that reference. Move or copy the selected generated file from `$CODEX_HOME/generated_images/...` into `ai_raw/`.
 
-Choose a chroma key color that does not appear in the subject:
+If no image generation/editing capability is available, stop after preparing the reference package and say the final PNG generation is not complete. Do not fake the AI redraw with scripts.
 
-- Subject has green leaves, grass, plants, or teal details: use magenta `#FF00FF`.
-- Subject has pink, magenta, purple, hearts, blush-heavy details, or red-purple gradients: use green `#00FF00` if the subject has no important green.
-- Subject has both green and magenta/pink: use a rarer key such as pure yellow `#FFFF00` or cyan `#00FFFF`, choosing the one least present in the subject.
-- Blue-heavy subjects should avoid cyan/blue keys.
+## Script Usage
 
-Always state the chosen key color in the generation prompt and tell the model not to use it in the subject.
-
-## Step 6: Background Removal
-
-Use the installed chroma-key helper on AI raw outputs:
+Initialize a task package:
 
 ```bash
-python "${CODEX_HOME:-$HOME/.codex}/skills/.system/imagegen/scripts/remove_chroma_key.py" \
-  --input assets/<task>/ai_raw/<id>_raw.png \
-  --out assets/<task>/generated/<id>.png \
-  --key-color "#FF00FF" \
-  --soft-matte \
-  --transparent-threshold 10 \
-  --opaque-threshold 210 \
-  --edge-contract 1 \
-  --despill \
-  --force
+python3 skills/reference-png-redraw/scripts/reference_png_redraw.py init \
+  --task dragon-drink \
+  --source /path/to/reference.png \
+  --id 01_dragon_drink \
+  --notes "cute blue dragon holding drink"
 ```
 
-Prefer explicit `--key-color` once a key has been chosen. Use edge-connected/background-aware removal; never replace that color globally across the whole image, because that can delete legitimate subject details.
+Finalize after AI redraw:
 
-If subject details are accidentally removed:
-
-1. Regenerate the AI raw image using a different key color.
-2. Tighten the prompt: "Do not use KEY_COLOR anywhere in the subject."
-3. Retry removal with explicit key color and edge-aware settings.
-4. Inspect alpha and subject integrity before continuing the batch.
-
-## Step 7: Validation
-
-Before final response, verify:
-
-- Each final file is a PNG with alpha.
-- Corners/background are transparent.
-- Subject is complete and centered.
-- Important green/pink/blue subject details are not removed.
-- No original screenshot background, crop edge, dirty pixels, watermark, or extra nearby object remains.
-- `generated_manifest.json` links `crop_file -> ai_raw_file -> generated_file`.
-
-`generated_manifest.json` minimum item:
-
-```json
-{
-  "id": "01_dragon_frame",
-  "crop_file": "assets/<task>/crops/01_dragon_frame.png",
-  "ai_raw_file": "assets/<task>/ai_raw/01_dragon_frame_raw.png",
-  "generated_file": "assets/<task>/generated/01_dragon_frame.png",
-  "key_color": "#FF00FF",
-  "generation_tool": "Codex built-in image generation/editing",
-  "reference_image_used": true
-}
+```bash
+python3 skills/reference-png-redraw/scripts/reference_png_redraw.py finalize \
+  --task dragon-drink \
+  --id 01_dragon_drink \
+  --ai-raw assets/dragon-drink/ai_raw/01_dragon_drink_raw.png \
+  --key-color "#FF00FF"
 ```
 
-## Batch Strategy
+The script writes or updates:
 
-For many elements:
-
-1. Crop everything first.
-2. Generate a contact sheet for human/agent inspection.
-3. Run one or two sample AI redraws.
-4. Validate transparency and subject quality.
-5. Continue in small batches.
-6. Update the manifest as each PNG is completed.
-
-Do not claim the batch is finished if only crops exist or if `ai_raw/` is missing.
+- `manifests/crops_manifest.json`
+- `manifests/generated_manifest.json`
+- final transparent PNG under `generated/`
 
 ## Final Response
 
-Report:
-
-- The final transparent PNG folder.
-- The manifest path.
-- Any elements skipped and why.
-- The key-color strategy if relevant.
-
-Keep the response concise. The user mainly needs the saved PNG paths and confidence that the workflow was followed.
+Report the final `generated/` folder, the generated manifest, and any skipped assets. Mention the chosen key color only when useful for verification or debugging.
